@@ -1,0 +1,84 @@
+  .nav-container {  position: relative;  z-index: 4; }
+  .sf-menu,
+  .sf-menu-phone {display: none;}
+  .nav-container .block-title {margin-bottom: 0;}
+  /* menu icon */
+ .sf-menu-block {display: block; position: relative;}
+  .nav-container-mobile { 
+    display: block !important; 
+    clear: both;
+    margin:30px 0 0;
+    z-index: 6 !important;
+  }
+  #menu-icon {
+    display: block;
+    font-size: 16px;
+    line-height: 21px;
+    cursor: pointer;
+    font-weight: 500;
+    text-transform: uppercase;
+    height: 50px;
+    padding: 14px 5px  14px 20px;
+    color: #333;
+    background: #f1f1f1;
+  }
+  #menu-icon:before {content: "\e071"; font-size: 28px; float: right;  }
+  #menu-icon.active:before { content: "\e073"; }
+
+  .sf-menu-phone {
+    background: #f1f1f1;
+    border-top: 0;
+    position: absolute;
+    z-index: 2;
+    width: 100%;
+    top: 52px;
+  }
+  .sf-menu-phone li {  position: relative;   }
+  .sf-menu-phone > li {  padding: 8px 29px; font-size: 16px; line-height: 20px; border-bottom: 1px solid #ddd; }
+  .sf-menu-phone > li.last {border-bottom: 0;}
+  .sf-menu-phone li a { display: inline-block;  color: #888888;  }
+  .sf-menu-phone li li {font-size: 13px; padding: 5px; }
+  .sf-menu-phone li li.last {padding-bottom: 10px;}
+  .sf-menu-phone li li:first-child {padding-top: 10px;}
+  .sf-menu-phone li li:first-child strong {top:10px;}
+  .sf-menu-phone li strong {
+    position: absolute;
+    display: block;
+    top: 10px;
+    right: 10px;
+    width: 24px;
+    font-size: 30px; 
+    line-height: 16px;
+    text-align: center;
+    color: #dadee1;
+  }
+  .sf-menu-phone > li > strong {}
+  .sf-menu-phone li strong:hover { cursor: pointer; }
+  .sf-menu-phone li strong:before {content: "\e071"; }
+  .sf-menu-phone li strong.opened:before { content: "\e073"; }
+
+  /* dropdown */
+  .sf-menu-phone ul {  
+    width: auto;  
+    display: none; 
+    padding: 0 15px;
+  }
+  .sf-menu-phone > li.active > a > span {color: inherit;}
+
+  .sf-menu-phone > li.parent.act  {  } 
+  
+  .sf-menu-phone > li.active > a,
+  .sf-menu-phone > li.parent.act > a,
+  .sf-menu-phone > li > a:hover { color: #333333; }  
+
+  .sf-menu-phone li li.active > a,
+  .sf-menu-phone li li a:hover {color: #333333;}
+
+@media only screen and (min-width: 992px) {
+   .nav-container-mobile {display: none !important;}
+}
+@media only screen and (max-width: 767px) { 
+  .nav-container {margin-top: 60px; float: none;}
+  #menu-icon {width: 100%;}
+  .sf-menu-block {margin: 0 10px;}
+}

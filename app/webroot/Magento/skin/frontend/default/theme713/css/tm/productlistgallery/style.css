@@ -1,0 +1,75 @@
+.product-image-container{
+	float: left;
+}
+
+.product-thumbs{
+	overflow: hidden;
+	margin: 0 -2px;
+}
+
+.product-thumb {
+	margin:0 0 10px;	
+}
+
+.product-thumb a{
+	background: #fff;
+	border: 1px solid #eaedee;
+	display: block;
+}
+
+.product-thumb a:hover,
+.product-thumb a.active {
+	box-shadow: 0 0px 18px rgba(187,194,199,0.42);
+    -webkit-box-shadow: 0 0px 18px rgba(187,194,199,0.42);
+}
+
+.products-grid .product-thumbs {
+	position: absolute;
+	top: 15px;
+	right: 15px;
+	display: none;
+}
+.product-thumbs img {max-width: 100%; height: auto;}
+.ps-static .products-grid li.item.hovered  .product-thumbs {	
+	display: block;
+	animation-duration: 0.4s;
+	-webkit-animation-duration: 0.4s;
+    animation-fill-mode: both;
+    -webkit-animation-fill-mode: both;
+    animation-name: zoomIn;
+    -webkit-animation-name:zoomIn;
+}
+.products-grid li.item  .product-thumbs li {display:block; margin-bottom: 10px;}
+.products-list .product-thumbs {float: left; margin-right: 15px;}
+
+@media only screen and (min-width: 768px) and (max-width: 991px) { 
+	.products-grid .product-thumbs {position: relative; display: block; right:0; top: 0; }
+	.products-grid li.item  .product-thumbs li {display: inline-block;}
+	.products-grid .product-thumb a {width: 30px;}
+}
+@media only screen and (max-width: 767px) { 
+	.products-grid .product-thumbs {
+		float: left;
+		position: relative;
+		display: block;
+		margin-right: 10px;
+		right:0; 
+		top: 0; 
+	}
+	.products-grid li.item .product-thumbs li {display: block;}
+	.products-grid li.item .product-thumbs li a {width: 28px;} 
+
+	.products-grid li.item.free .product-thumbs {float: none; margin-right: 0; text-align: center;}
+	.products-grid li.item.free .product-thumbs li {display: inline-block;}
+	.sliderClass .products-grid li.item.free .product-image {width: 100%; margin: 0 0 10px; float: none;}
+}
+@media only screen and (max-width: 460px) { 
+	.products-grid li.item .product-thumbs li a {width: 45px;}
+}
+@media only screen and (max-width: 481px)  {
+	.product-thumb a img { height: auto; width: auto;}
+	.products-list .product-thumbs  { float: none; clear: left; margin-right: 0;}
+	.products-list .product-thumbs li {display: inline-block; margin: 2px;}
+	.products-list .product-thumb a img {width: 53px;}
+
+}

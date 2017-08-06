@@ -1,0 +1,1 @@
+C:\mysql\bin>mysqldump.exe -uroot -p tvsn_weblogs site_clicks --where "YEAR(createdTime)=2009 limit 100" > backup_2009.sql

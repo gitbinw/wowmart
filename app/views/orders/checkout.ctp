@@ -139,9 +139,11 @@ if (isset($billings) && count($billings) > 0) {
             <div class="buttons-set" id="payment-buttons-container">
                 <p class="back-link"><a><small>« </small>Back</a></p>
                 <!--<button type="button" class="button" onclick="payment.save()"><span><span>Pay Now with Paypal</span></span></button>-->
+                <input type="hidden" name="csrf" id="payment_csrf" value="<?php echo $csrf;?>" />
                 <div id="paypal_button_wrap" class="text-right"></div>
                 <span class="please-wait" id="payment-please-wait" style="display:none;">
-                    <img src="/img/icons/icon_load.gif" alt="Loading next step..." title="Loading next step..." class="v-middle"> Loading next step...    </span>
+                    <img src="/img/icons/icon_load.gif" alt="Loading next step..." title="Loading next step..." class="v-middle"> Loading next step...    
+                </span>
             </div>
 
         </div>

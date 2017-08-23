@@ -28,5 +28,5 @@
 	ini_set('session.cookie_path', $this->path);
 	ini_set('session.auto_start', 0);
 	ini_set('session.save_path', TMP . 'sessions');
-	ini_set('session.cookie_domain', env('HTTP_BASE'));
+	//ini_set('session.cookie_domain', env('HTTP_BASE'));
 ?>

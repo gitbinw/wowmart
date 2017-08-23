@@ -59,6 +59,7 @@ define('COOKIE_WOWMART', 'WM');
 
 define('APP_VENDORS', ROOT . DS . APP_DIR . DS . 'vendors');
 define('APP_VENDORS_PAYPAL_REST', APP_VENDORS . DS . 'paypal_rest');
+define('APP_VENDORS_PAYPAL', APP_VENDORS . DS . 'PayPal');
 
 /*1 is the ID in sys_suppliers table. we don't need Supplier for this website,
  * so, just created a supplier which is wowmart, all products are linked to 
@@ -137,6 +138,8 @@ define('TYPE_ORDER_RETURN', 7);
 
 //Payment Method
 define('PAYMENT_METHOD_CASH', 'cash');
+define('PAYPAL_SANDBOX_CLIENT_ID', 'ASEg-oxQONgTpyuzC_X4HHo-ZeCPWrAahGZuxgrYMrNVtlEbIcFtBcVPiDkhshoy1-FBFIRq01bnXR7h');
+define('PAYPAL_SANDBOX_CLIENT_SECRET', 'EMar2122M75ArvUJfu4MAvI0zjkAQSdLRiQNUw_55VlSwgnjSKQuwElkdP7zwHfZj56th_LGnGCEItS1');
 
 //Business Code
 define('BUSINESS_BRASA_DELIVERY', 2);
@@ -158,6 +161,7 @@ define('EMAIL_SUPPLIERS_REPLY', 'suppliers@freshla.com.au');
 define('EMAIL_SUPPLIERS_FROM', 'Freshla <' . EMAIL_SUPPLIERS_REPLY . '>');
 
 //User defined shipping
+define('SHIPPING_DEFAULT_COUNTRY_CODE', 'AU');
 define('SHIPPING_USERDEFINED_BASIC', 9.8);
 define('SHIPPING_USERDEFINED_MAX', 5);
 define('SHIPPING_USERDEFINED_PERITEM', 2);

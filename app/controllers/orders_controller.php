@@ -1,4 +1,20 @@
 <?php
+require_once(APP_VENDORS_PAYPAL . DS . 'vendor' . DS . 'autoload.php');
+
+use PayPal\Auth\OAuthTokenCredential;
+use PayPal\Rest\ApiContext;
+use PayPal\Api\Address;
+use \PayPal\Api\ShippingAddress;
+use PayPal\Api\Amount;
+use PayPal\Api\Details;
+use PayPal\Api\Item;
+use PayPal\Api\ItemList;
+use PayPal\Api\Payer;
+use PayPal\Api\Payment;
+use PayPal\Api\RedirectUrls;
+use PayPal\Api\PaymentExecution;
+use PayPal\Api\Transaction;
+
 class OrdersController extends AppController {
 	var $uses = array ('Order', 'Invoice', 'Contact', 'Store');
 	var $helpers = array ('Javascript','Combobox','Utility', 'Fpdf');
@@ -90,46 +106,267 @@ class OrdersController extends AppController {
 			$this->Email->send();
 		}
 	} 
+
+	
+	/**
+	* Helper method for getting an APIContext for all calls
+	* @param string $clientId Client ID
+	* @param string $clientSecret Client Secret
+	* @return PayPal\Rest\ApiContext
+	*/
+	private function getApiContext($clientId, $clientSecret) {
+
+		// #### SDK configuration
+		// Register the sdk_config.ini file in current directory
+		// as the configuration source.
+		/*
+		if(!defined("PP_CONFIG_PATH")) {
+			define("PP_CONFIG_PATH", __DIR__);
+		}
+		*/
+
+
+		// ### Api context
+		// Use an ApiContext object to authenticate
+		// API calls. The clientId and clientSecret for the
+		// OAuthTokenCredential class can be retrieved from
+		// developer.paypal.com
+
+		$apiContext = new ApiContext(
+			new OAuthTokenCredential(
+				$clientId,
+				$clientSecret
+			)
+		);
+
+		// Comment this line out and uncomment the PP_CONFIG_PATH
+		// 'define' block if you want to use static file
+		// based configuration
+
+		$apiContext->setConfig(
+			array(
+				'mode' => 'sandbox',
+				'log.LogEnabled' => true,
+				'log.FileName' => '../PayPal.log',
+				'log.LogLevel' => 'DEBUG', // PLEASE USE `INFO` LEVEL FOR LOGGING IN LIVE ENVIRONMENTS
+				'cache.enabled' => true,
+				// 'http.CURLOPT_CONNECTTIMEOUT' => 30
+				// 'http.headers.PayPal-Partner-Attribution-Id' => '123123123'
+				//'log.AdapterFactory' => '\PayPal\Log\DefaultLogFactory' // Factory class implementing \PayPal\Log\PayPalLogFactory
+			)
+		);
+
+		// Partner Attribution Id
+		// Use this header if you are a PayPal partner. Specify a unique BN Code to receive revenue attribution.
+		// To learn more or to request a BN Code, contact your Partner Manager or visit the PayPal Partner Portal
+		// $apiContext->addRequestHeader('PayPal-Partner-Attribution-Id', '123123123');
+
+		return $apiContext;
+	}
 	
 	function paypalStart() {
-		if (session_id() == "") session_start();
-		require_once(APP_VENDORS_PAYPAL_REST . DS . 'utilFunctions.php');
-		require_once(APP_VENDORS_PAYPAL_REST . DS . 'paypalFunctions.php');
+		$apiContext = $this->getApiContext(PAYPAL_SANDBOX_CLIENT_ID, PAYPAL_SANDBOX_CLIENT_SECRET);
 
-		$access_token = getAccessToken();
-		$_SESSION['access_token'] = $access_token;
+		$payer = new Payer();
+		$payer->setPaymentMethod("paypal");
 
-		if(verify_nonce()) {
+		if(isset($_REQUEST['csrf']) && $_REQUEST['csrf'] == $this->Session->read('csrf')) {
 			$order =  $this->Utility->getCart($this->Session);
+			$shippingAddress = $this->getAddress($this->params['form']['shipping_address_id']);
+			$shipAddress = $shippingAddress['Contact'];
+			$countryCode = !isset($shipAddress['country']) || empty($shipAddress['country']) ? 'AU' : $shipAddress['country'];
+			$arrNames = array();
+			if (isset($shipAddress['firstname']) && !empty($shipAddress['firstname'])) $arrNames[] = $shipAddress['firstname'];
+			if (isset($shipAddress['lastname']) && !empty($shipAddress['lastname'])) $arrNames[] = $shipAddress['lastname'];
+			$shipName = implode(' ', $arrNames);
 
-			$expressCheckoutArray = json_decode($_SESSION['expressCheckoutPaymentData'], true);
-			$expressCheckoutArray['transactions'][0]['amount']['details']['subtotal'] = $order->total;
+			$arrPaypalItems = array();
+
 			foreach($order->items as $item) {
-				$expressCheckoutArray['transactions'][0]['item_list']['items'][0]['name'] = $item['CartItem']['name'];
-				$expressCheckoutArray['transactions'][0]['item_list']['items'][0]['price'] = $item['CartItem']['price'];
-				$expressCheckoutArray['transactions'][0]['item_list']['items'][0]['quantity'] = $item['CartItem']['qty'];
-				$expressCheckoutArray['transactions'][0]['item_list']['items'][0]['currency'] = 'AUD';
+				$payPalItem = new Item();
+				$payPalItem->setName($item['CartItem']['name'])
+							->setCurrency('AUD')
+							->setQuantity($item['CartItem']['qty'])
+							->setSku($item['CartItem']['serial_no']) 
+							->setPrice($item['CartItem']['price']);
+				
+				$arrPaypalItems[] = $payPalItem;
 			}
-			$expressCheckoutArray['transactions'][0]['amount']['details']['tax'] = 0;
-			$expressCheckoutArray['transactions'][0]['amount']['details']['insurance'] = 0;
-			$expressCheckoutArray['transactions'][0]['amount']['details']['shipping'] = $order->shipping;
-			$expressCheckoutArray['transactions'][0]['amount']['details']['handling_fee'] = 0;
-			$expressCheckoutArray['transactions'][0]['amount']['details']['shipping_discount'] = 0;
-			$expressCheckoutArray['transactions'][0]['amount']['total'] = (float)$order->total + (float)$order->shipping;
-			$expressCheckoutArray['transactions'][0]['amount']['currency'] = 'AUD';
 
-			$_SESSION['expressCheckoutPaymentData'] = json_encode($expressCheckoutArray);
-			$approval_url = getApprovalURL($access_token, $_SESSION['expressCheckoutPaymentData']);
+			$shipping_address = new ShippingAddress();
 
-			//redirect user to the Approval URL
-			//header("Location:" . $approval_url);
-		} else {
-			die('Session expired');
+			$shipping_address->setCity($shipAddress['suburb']);
+			$shipping_address->setCountryCode($countryCode);
+			$shipping_address->setPostalCode($shipAddress['postcode']);
+			$shipping_address->setLine1($shipAddress['address1']);
+			$shipping_address->setState($shipAddress['state']);
+			$shipping_address->setRecipientName($shipName);
+
+			$itemList = new ItemList();
+			$itemList->setItems($arrPaypalItems)
+					 ->setShippingAddress($shipping_address);
+			
+			$details = new Details();
+			$details->setShipping($order->shipping)
+					->setTax(0)
+					->setSubtotal($order->total);
+					
+			$amount = new Amount();
+			$amount->setCurrency("AUD")
+					->setTotal((float)$order->total + (float)$order->shipping)
+					->setDetails($details);
+			
+			$transaction = new Transaction();
+			$transaction->setAmount($amount)
+						->setItemList($itemList)
+						->setDescription("Payment description")
+						->setInvoiceNumber($this->generateOrderNumber());
+			
+			$baseUrl =  $this->Utility->getBaseUrl();
+			$redirectUrls = new RedirectUrls();
+			$redirectUrls->setReturnUrl("$baseUrl/orders/paypalExecutePay?success=true")
+						 ->setCancelUrl("$baseUrl/orders/paypalExecutePay?success=false");
+						
+			$payment = new Payment();
+			$payment->setIntent("sale")
+					->setPayer($payer)
+					->setRedirectUrls($redirectUrls)
+					->setTransactions(array($transaction));
+
+			try {
+				$payment->create($apiContext);
+			} catch (Exception $ex) {
+
+				exit(1);
+			}
+
+			$approvalUrl = $payment->getApprovalLink();
+			
 		}
 
 		$this->autoRender = false;
 
+		return $payment;
+
 		die();
+	}
+
+	function paypalExecutePay() {
+		$apiContext = $this->getApiContext(PAYPAL_SANDBOX_CLIENT_ID, PAYPAL_SANDBOX_CLIENT_SECRET);
+
+		if (isset($_REQUEST['success']) && $_REQUEST['success'] == 'true') {
+
+			if(isset($_REQUEST['csrf']) && $_REQUEST['csrf'] == $this->Session->read('csrf')) {
+				// Get the payment Object by passing paymentId
+				// payment id was previously stored in session in
+				// CreatePaymentUsingPayPal.php
+				$paymentId = $_REQUEST['paymentID'];
+				$payment = Payment::get($paymentId, $apiContext);
+
+				// ### Payment Execute
+				// PaymentExecution object includes information necessary
+				// to execute a PayPal account payment.
+				// The payer_id is added to the request query parameters
+				// when the user is redirected from paypal back to your site
+				$execution = new PaymentExecution();
+				$execution->setPayerId($_REQUEST['payerID']);
+
+				// ### Optional Changes to Amount
+				// If you wish to update the amount that you wish to charge the customer,
+				// based on the shipping address or any other reason, you could
+				// do that by passing the transaction object with just `amount` field in it.
+				// Here is the example on how we changed the shipping to $1 more than before.
+				$transaction = new Transaction();
+				$amount = new Amount();
+				$details = new Details();
+
+				$order =  $this->Utility->getCart($this->Session);
+
+				$details->setShipping($order->shipping)
+						->setTax(0)
+						->setSubtotal($order->total);
+
+				$amount->setCurrency("AUD")
+						->setTotal((float)$order->total + (float)$order->shipping)
+						->setDetails($details);
+
+				$transaction->setAmount($amount);
+
+				// Add the above transaction object inside our Execution object.
+				$execution->addTransaction($transaction);
+
+				$this->autoRender = false;
+
+				try {
+					// Execute the payment
+					// (See bootstrap.php for more on `ApiContext`)
+					$result = $payment->execute($execution, $apiContext);
+
+					try {
+						$payment = Payment::get($paymentId, $apiContext);
+					} catch (Exception $ex) {
+
+						exit(1);
+					}
+				
+					$this->Utility->clearCart($this->Session);
+
+				} catch (Exception $ex) {
+					
+					exit(1);
+				}
+
+				return $payment;
+
+			}
+
+		} else {
+
+			exit;
+		}
+
+		die();
+	}
+
+	private function afterPayment() {
+		$this->Order->read(null, $transaction['InstantPaymentNotification']['custom']);
+		$this->Order->set(array('is_paid' => 1, 'status_id' =>TYPE_ORDER_PAID));
+		$this->Order->save();
+  
+		$this->Order->unbindModel(array('belongsTo' => array('Status', 'Invoice')));
+		$this->Order->User->unbindModel(array(
+			'hasAndBelongsToMany' => array('Group'),
+			'hasMany' => array('Contact', 'Order')
+		));
+		$this->Order->hasAndBelongsToMany['Product']['fields'] = array('id', 'name', 'serial_no');
+		$this->Order->Product->unbindModel(array(
+				'hasMany' => array('Media', 'Document', 'Feature'),
+				'hasAndBelongsToMany' => array('Category', 'Type')
+		));
+		$this->Order->Product->hasMany['Image']['conditions']['is_default'] = 1;
+
+		$params = array(
+			'conditions' => array(
+				'Order.id' =>  $transaction['InstantPaymentNotification']['custom'],
+				'Order.status_id' => TYPE_ORDER_PAID
+			),
+			'recursive' => 2
+		);
+		if ($order = $thisOrder->find('first', $params)) {
+			$this->sendPaymentEmail($order);
+		}
+	}
+	private function getAddress($addressId) {
+		$params = array(
+				'conditions' => array(
+					'user_id' => $this->Auth->user('id'), 
+					'id' => $addressId
+				),
+				'recursive' => -1
+		);
+		$address = $this->Contact->find('first', $params);
+
+		return $address;
 	}
 	function checkout () {
 		$params = array(
@@ -152,9 +389,12 @@ class OrdersController extends AppController {
 		);
 		$shippings = $this->Contact->find('all', $params);
 		
+		$csrf = bin2hex(openssl_random_pseudo_bytes(32));
+		$this->Session->write('csrf', $csrf);
 		$this->set('billings', $billings);
 		$this->set('shippings', $shippings);
 		$this->set('order_items', $this->Utility->getCart($this->Session));
+		$this->set('csrf', $csrf);
 		/*$cart = $this->getCart();
 		if (!isset($cart['items']) || count($cart['items']) <= 0) {
 			$this->redirect('/carts/view');

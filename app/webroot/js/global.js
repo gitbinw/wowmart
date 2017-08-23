@@ -276,10 +276,21 @@ function hideLoading() {
 	jQuery("#ajopacity").hide();
 }
 
+function getOrderAddress() {
+	var csrf = jQuery('input#payment_csrf').val(),
+		billingAddressId = jQuery('input#current_billing_id').val(),
+		shippingAddressId = jQuery('input#current_shipping_id').val();
+	if (jQuery('input#billing_use_for_shipping_yes').is(':checked')) {
+		shippingAddressId = billingAddressId;
+	}
+	
+	return {billing_address_id: billingAddressId, shipping_address_id: shippingAddressId, csrf: csrf};
+}
+
 /*paypal setup*/
 function setupPaypalButton () {
-	var CREATE_PAYMENT_URL  = 'http://dev.wowmart.com/orders/paypalstart',
-		EXECUTE_PAYMENT_URL = 'http://dev.wowmart.com/orders/paypalpay',
+	var CREATE_PAYMENT_URL  = 'http://dev.wowmart.com:8080/orders/paypalstart',
+		EXECUTE_PAYMENT_URL = 'http://dev.wowmart.com:8080/orders/paypalexecutepay?success=true',
 		paypalEnv = 'sandbox'; //'production';
 	
 	if (window.paypal != undefined) {
@@ -296,19 +307,23 @@ function setupPaypalButton () {
 			},
 
 			payment: function() {
-				return paypal.request.post(CREATE_PAYMENT_URL).then(function(data) {
-					alert(3333333333333);
-					console.log(data);
+				var address = window.getOrderAddress();
+				return paypal.request.post(CREATE_PAYMENT_URL, address).then(function(data) {
 					return data.id;
 				});
 			},
 
 			onAuthorize: function(data) {
+				var csrf = jQuery('input#payment_csrf').val();
 				return paypal.request.post(EXECUTE_PAYMENT_URL, {
 					paymentID: data.paymentID,
-					payerID:   data.payerID
-				}).then(function() {
-
+					payerID:   data.payerID,
+					csrf: csrf
+				}).then(function(jData) {
+					if (jData && jData.id) {
+						alert(4444);
+					}
+					console.log('payment success.....', jData);
 					// The payment is complete!
 					// You can now show a confirmation message to the customer
 				});
@@ -316,6 +331,55 @@ function setupPaypalButton () {
 
 		}, '#paypal_button_wrap');
 	}
+
+
+	/*var paypalEnv = 'sandbox'; //'production';
+	
+	if (window.paypal != undefined) {
+		paypal.Button.render({
+
+			env: paypalEnv, // Or 'sandbox'
+
+			//commit: true, // Show a 'Pay Now' button
+			style: {
+				size: 'medium',
+				color: 'blue',
+				shape: 'rect',
+				label: 'pay'
+			},
+
+			client: {
+				sandbox:    'ASEg-oxQONgTpyuzC_X4HHo-ZeCPWrAahGZuxgrYMrNVtlEbIcFtBcVPiDkhshoy1-FBFIRq01bnXR7h',
+				production: 'ASEg-oxQONgTpyuzC_X4HHo-ZeCPWrAahGZuxgrYMrNVtlEbIcFtBcVPiDkhshoy1-FBFIRq01bnXR7h'
+			},
+
+			commit: true, // Show a 'Pay Now' button
+
+			payment: function(data, actions) {
+				var objTtl = document.getElementById('payment_total_value'),
+					ttl = objTtl.value;
+				
+				return actions.payment.create({
+					payment: {
+						transactions: [
+							{
+								amount: { total: ttl, currency: 'AUD' }
+							}
+						]
+					}
+				});
+			},
+
+			onAuthorize: function(data, actions) {
+				return actions.payment.execute().then(function(payment) {
+					console.log(payment);
+					// The payment is complete!
+					// You can now show a confirmation message to the customer
+				});
+			}
+
+		}, '#paypal_button_wrap');
+	}*/
 }
 	
 jQuery.noConflict();

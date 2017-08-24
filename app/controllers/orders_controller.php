@@ -22,58 +22,6 @@ class OrdersController extends AppController {
 	var $strListName = 'thisItem';
 	var $layout = 'default';
 	
-	private function wrapPaypalData() {
-		$url = 'https://www.paypal.com';
-		$settings = array(
-			'cmd' => '_cart',
-    		'upload' => 1,
-    		'type' => 'cart',
-    		//'test' => 1,
-    		'business' => 'marco@freshla.com.au', //'sandbox_email@paypal.com',
-    		//'server' => 'https://www.sandbox.paypal.com',
-    		'notify_url' => SITE_URL . '/paypal_ipn/process',
-    		'return' =>  SITE_URL . '/orders/thankyou',
-  			'cancel_return' => SITE_URL . '/checkout/confirm',
-  			'image_url' =>  SITE_URL . '/img/home/logo_small.gif',
-    		'currency_code' => 'AUD',
-    		'lc' => 'AU',
-    		'item_name' => 'Paypal_IPN',
-    		'custom' => $this->Session->read('Order.orderId'), //pass order id to paypal for updating status after payment.
-    		'amount' => '15.00',
-    		'no_shipping' => 1,
-    		//'address_override' => 1,
-  		);
-  		$queryString = "?";
-  		foreach ($settings as $key => $val) {
-  			$queryString .= "&" . $key . "=" . $val;
-  		}
-		
-		$cart = $this->Session->read('sess_cart');
-		if(isset($cart['items']) && is_array($cart['items'])){
-        	$count = 1;
-        	foreach($cart['items'] as $item){
-          		foreach($item as $key => $value){
-            		$queryString .= "&" . $key.'_'.$count . "=" . $value;
-          		}
-          		$count++;
-        	}
-        	unset($cart['items']);
-      	}
-      	
-      	if ($shippingAddress = $this->Session->read('Order.Shipping')) {
-          $queryString .= '&address1=' . $shippingAddress['address1']
-          			   .  '&address2=' . $shippingAddress['address2']
-          			   .  '&city='     . $shippingAddress['suburb']
-          			   .  '&state='    . 'CA' //$shippingAddress['state']
-          			   .  '&zip='      . '95131' //$shippingAddress['postcode']
-          			   .  '&country='  . 'US' //$settings['lc']
-          			   .  '&first_name=' . $shippingAddress['firstname']
-          			   .  '&last_name=' . $shippingAddress['lastname'];
-      	}
-      	$url .= $queryString;
-      	return $url;
-	}
-	
 	private function generateOrderNumber () {
 		$newNo = time() . $this->Auth->user('id');
 		return $newNo;
@@ -304,12 +252,13 @@ class OrdersController extends AppController {
 
 					try {
 						$payment = Payment::get($paymentId, $apiContext);
+						$arrPayment = json_decode($payment);
+						$this->placeOrder($arrPayment);
+
 					} catch (Exception $ex) {
 
 						exit(1);
 					}
-				
-					$this->Utility->clearCart($this->Session);
 
 				} catch (Exception $ex) {
 					
@@ -326,6 +275,45 @@ class OrdersController extends AppController {
 		}
 
 		die();
+	}
+
+	private function placeOrder($orderData) {
+		if ($this->Auth->user()) {
+			if ($orderData && !empty($orderData)) {
+				$cart = $this->Utility->getCart($this->Session);
+
+				if (isset($cart['items']) && count($cart['items']) > 0) {
+		
+					$data['Order']['user_id'] = $this->Auth->user('id');
+					$data['Order']['order_no'] = $orderData->orderNumber;
+					$data['Order']['is_paid'] = 1;
+					$data['Order']['status_id'] = TYPE_ORDER_PAID;
+					$data['Order']['subtotal']= $orderData->subtotal;
+					$data['Order']['freight']= $orderData->shipping;
+					$data['Order']['total_amount'] = $orderData->total;
+
+					$data['Billing' ] = $orderData->billing;
+					$data['Shipping'] = $orderData->shipping;
+					
+					$index = 0;
+					foreach($orderData->items as $item) {
+						$subitemId = !empty($item['subitem_id']) ? $item['subitem_id'] : 0;
+						$data['OrdersProduct'][$index]['product_id'] = $item['product_id'];
+						$data['OrdersProduct'][$index]['quantity'] = $item['quantity'];
+						$data['OrdersProduct'][$index]['prod_desc'] = $item['item_name'];
+						$data['OrdersProduct'][$index]['subtotal'] = $item['subtotal'];
+						$data['OrdersProduct'][$index]['deal_price'] = $item['amount'];
+						$data['OrdersProduct'][$index]['freight'] = $item['shipping'];
+						$data['OrdersProduct'][$index]['subproduct_id'] = $subitemId;
+						$index ++;
+					}
+					$this->Order->bindModel(array('hasMany'=>array('OrdersProduct')), false);
+					if ($this->Order->saveAll($data)) {
+						$this->Utility->clearCart($this->Session);
+					}
+				}
+			}
+		}
 	}
 
 	private function afterPayment() {
@@ -369,255 +357,37 @@ class OrdersController extends AppController {
 		return $address;
 	}
 	function checkout () {
-		$params = array(
-			'conditions' => array(
-				'user_id' => $this->Auth->user('id'),
-				'is_billing' => 1
-			),
-			'recursive' => -1,
-			'order' => array('created DESC')
-		);
-		$billings = $this->Contact->find('all', $params);
-		
-		$params = array(
-			'conditions' => array(
-				'user_id' => $this->Auth->user('id'),
-				'is_shipping' => 1
-			),
-			'recursive' => -1,
-			'order' => array('created DESC')
-		);
-		$shippings = $this->Contact->find('all', $params);
-		
-		$csrf = bin2hex(openssl_random_pseudo_bytes(32));
-		$this->Session->write('csrf', $csrf);
-		$this->set('billings', $billings);
-		$this->set('shippings', $shippings);
-		$this->set('order_items', $this->Utility->getCart($this->Session));
-		$this->set('csrf', $csrf);
-		/*$cart = $this->getCart();
-		if (!isset($cart['items']) || count($cart['items']) <= 0) {
-			$this->redirect('/carts/view');
-			exit();
-		}
-		
-		$errors = "";
-		$view = isset($this->params['pass'][0]) ? $this->params['pass'][0] : 'billing';
-		switch($view) {
-			case 'billing' :
-				if (!empty ($this->data['Billing'])) {
-					$this->Billing->set($this->data['Billing']);
-					if ($this->Billing->validates()) {
-						$this->Session->write('Order.Billing',$this->data['Billing']);
-						if (isset($this->data['Billing']['is_delivery']) && $this->data['Billing']['is_delivery'] == 1) {
-							$this->Session->write('Order.Shipping',$this->data['Billing']);
-							$this->redirect('/checkout/confirm');
-						} else {
-							$this->redirect('/checkout/delivery');
-						}
-					} else {
-						$errors = $this->validateErrors($this->Billing);
-					}
-				} else if ($this->Session->check('Order.Billing')) {
-					$this->data['Billing'] = $this->Session->read('Order.Billing');
-				} else {
-					$contact = $this->User->Contact->find('first', array(
-						'conditions' => array(
-							'user_id' => $this->Auth->user('id'),
-							'is_billing' => 1
-						 ),
-						 'fields' => array('company', 'firstname', 'lastname', 'address1', 'address2', 
-							'suburb', 'state', 'postcode', 'country', 'phone', 'mobile')
-					));
-					if (isset($contact['Contact']) && count($contact) > 0) {
-						$this->data['Billing'] = $contact['Contact'];
-					}
-				}
-				break;
-			case 'delivery' :
-				if (!empty ($this->data['Shipping'])) {
-					$this->Shipping->set($this->data['Shipping']);
-					if ($this->Shipping->validates()) {
-						$this->Session->write('Order.Shipping',$this->data['Shipping']);
-						$this->redirect('/checkout/confirm');
-					} else {
-						$errors = $this->validateErrors($this->Shipping);
-					}
-				} else if ($this->Session->check('Order.Shipping')) {
-					$this->data['Shipping'] = $this->Session->read('Order.Shipping');
-				} else {
-					$contact = $this->User->Contact->find('first', array(
-						'conditions' => array(
-							'user_id' => $this->Auth->user('id'),
-							'is_shipping' => 1
-						 ),
-						 'fields' => array('company', 'firstname', 'lastname', 'address1', 'address2', 
-							'suburb', 'state', 'postcode', 'country', 'phone', 'mobile')
-					));
-					if (isset($contact['Contact']) && count($contact) > 0) {
-						$this->data['Shipping'] = $contact['Contact'];
-					}
-				}
-				
-				break;
-					
-			case 'confirm' :
-				$this->set('shippingAddress', $this->Session->read('Order.Shipping'));
-				$this->set('billingAddress', $this->Session->read('Order.Billing'));
-				$this->set('orderPlaced', false);
-				if ($this->Session->check('Order.orderId')) {
-					$this->set('orderPlaced', true);
-				}
-				if ($err = $this->Session->read('return_data')) {
-					$this->set('shipping_error', $err['error']);
-					$this->set('payment_method', $err['pay_method']); 
-					$this->Session->delete('return_data');
-				}
-				$this->set('cart', $this->getCart());
-				break;
-		}
-		if ($this->Session->check('Order.Billing')) {
-			$this->set('jsonData', json_encode($this->Session->read('Order.Billing')));
-		}
-		$this->set('errors', $errors);
-		$this->set($this->strListName, $this->data);
-		$this->render($view);*/
-		
-		$this->layout = 'checkout';
-		$this->render('checkout');
-	}
-	
-	function place() {
 		if ($this->Auth->user()) {
-			if ($this->Session->check('sess_cart')) {
-				$isPaypal = true;
-				$cart = $this->Session->read('sess_cart');
-				if (isset($cart['items']) && count($cart['items']) > 0) {
-					$data['Billing' ] = $this->Session->read('Order.Billing');
-					$data['Shipping'] = $this->Session->read('Order.Shipping');
-					
-					if($cart['businessCode'] == BUSINESS_BRASA_DELIVERY) {
-						$params = array(
-							'conditions' => array('locations LIKE' => '%' . $data['Shipping']['postcode'] . '%'),
-							'recursive' => -1
-						);	
-						$count = $this->Order->Product->Supplier->find('count', $params);
-						if ($count == 0) {
-							$return_data['error'] = "** Sorry, your suburb(" . $data['Shipping']['suburb'] . "&nbsp;" . $data['Shipping']['postcode'] . ") is not under our delivery service. Please <a href='/webpage/deliveryarea.html'>click here</a> to view our delivery areas list.";
-							$return_data['pay_method'] = $this->params['form']['payment_method'];
-							
-							$this->Session->write('return_data', $return_data);
-							$this->redirect('/checkout/confirm');
-							exit();
-						}
-						
-						$data['Order']['business_code'] = $cart['businessCode'];
-                                                if (isset($this->params['form']['payment_method']) && $this->params['form']['payment_method'] == PAYMENT_METHOD_CASH) {
-							$data['Order']['pay_method'] = PAYMENT_METHOD_CASH;
-							$isPaypal = false;
-						}
-					}
-					$data['Order']['user_id'] = $this->Auth->user('id');
-					$data['Order']['order_no'] = $this->generateOrderNumber();
-					$data['Order']['is_paid'] = '0';
-					$data['Order']['status_id'] = TYPE_ORDER_NOT_PAID;
-					$data['Order']['subtotal']= $cart['totalAmount'];
-					$data['Order']['freight']= $cart['totalShipping'];
-					$data['Order']['total_amount'] = $cart['totalAmount'] + $cart['totalShipping'];
-					
-					if ($this->Session->check('Order.orderId')) {
-						$data['Order']['id'] = $this->Session->read('Order.orderId');
-						unset($data['Order']['order_no']);
-					}
-					if ($this->Session->check('Order.billingId')) {
-						$data['Billing']['id'] = $this->Session->read('Order.billingId');
-					}
-					if ($this->Session->check('Order.shippingId')) {
-						$data['Shipping']['id'] = $this->Session->read('Order.shippingId');
-					}
-					
-					$index = 0;
-					$prod_line = $subprod_line = array();
-					foreach($cart['items'] as $key => $item) {
-						$subitemId = !empty($item['subitem_id']) ? $item['subitem_id'] : 0;
-						if (isset($data['Order']['id'])) {
-							$orderLine = $this->Order->OrdersProduct->find('first', array(
-																'conditions' => array(
-																		'product_id'=>$item['product_id'], 
-																		'subproduct_id' => $subitemId,
-																		'order_id'=>$data['Order']['id']
-																),
-																'recursive' => -1,
-																'fields' => array('id')
-															));
-							if(isset($orderLine['OrdersProduct']['id']) && !empty($orderLine['OrdersProduct']['id'])) {
-								$data['OrdersProduct'][$index]['id'] = $orderLine['OrdersProduct']['id'];
-							}
-						}
-						$prod_line[] = $item['product_id'];
-						$subprod_line[] = $subitemId;
-						$data['OrdersProduct'][$index]['product_id'] = $item['product_id'];
-						$data['OrdersProduct'][$index]['quantity'] = $item['quantity'];
-						$data['OrdersProduct'][$index]['prod_desc'] = $item['item_name'];
-						$data['OrdersProduct'][$index]['subtotal'] = $item['subtotal'];
-						$data['OrdersProduct'][$index]['deal_price'] = $item['amount'];
-						$data['OrdersProduct'][$index]['freight'] = $item['shipping'];
-						$data['OrdersProduct'][$index]['subproduct_id'] = $subitemId;
-						$index ++;
-					}
-					$this->Order->bindModel(array('hasMany'=>array('OrdersProduct')), false);
-					if ($this->Order->saveAll($data)) {
-						//If nothing in address book, then add this billing for default
-						if (!$this->Contact->hasAny('is_billing=1 AND user_id=' . $this->Auth->user('id'))) {
-							$contact1['Contact'] = $data['Billing'];
-							if (isset($contact1['Contact']['id'])) unset($contact1['Contact']['id']);
-							$contact1['Contact']['user_id'] = $this->Auth->user('id');
-							$contact1['Contact']['is_billing'] = 1;
-							$contact1['Contact']['alias'] = 'My Billing Address';
-							$this->Contact->create();
-							$this->Contact->save($contact1);
-						}
-						//If nothing in address book, then add this shipping for default
-						if (!$this->Contact->hasAny('is_shipping=1 AND user_id=' . $this->Auth->user('id'))) {
-							$contact2['Contact'] = $data['Shipping'];
-							if (isset($contact2['Contact']['id'])) unset($contact2['Contact']['id']);
-							$contact2['Contact']['user_id'] = $this->Auth->user('id');
-							$contact2['Contact']['is_shipping'] = 1;
-							$contact2['Contact']['alias'] = 'My Shipping Address';
-							$this->Contact->create();
-							$this->Contact->save($contact2);
-						}
-						
-						if (!$this->Session->check('Order.orderId')) {
-							$this->Session->write('Order.orderId', $this->Order->getLastInsertID());
-						}
-						if (!$this->Session->check('Order.billingId')) {
-							$this->Session->write('Order.billingId', $this->Order->Billing->getLastInsertID());
-						}
-						if (!$this->Session->check('Order.shippingId')) {
-							$this->Session->write('Order.shippingId', $this->Order->Shipping->getLastInsertID());
-						}
-						
-						if (isset($data['Order']['id'])) {
-							//delete all products that have been remvoved from shopping cart.
-							$this->Order->OrdersProduct->deleteAll(array(
-															'order_id' => $data['Order']['id'],
-															'NOT' => array('product_id' => $prod_line),
-															'NOT' => array('subproduct_id' => $subprod_line)
-														));
-						}
-					}
-					
-					if ($isPaypal === true) $url = $this->wrapPaypalData();
-					else $url = '/orders/thankyou';
-					
-					$this->redirect($url);
-					exit();
-				}
-			}
+			$params = array(
+				'conditions' => array(
+					'user_id' => $this->Auth->user('id'),
+					'is_billing' => 1
+				),
+				'recursive' => -1,
+				'order' => array('created DESC')
+			);
+			$billings = $this->Contact->find('all', $params);
+			
+			$params = array(
+				'conditions' => array(
+					'user_id' => $this->Auth->user('id'),
+					'is_shipping' => 1
+				),
+				'recursive' => -1,
+				'order' => array('created DESC')
+			);
+			$shippings = $this->Contact->find('all', $params);
+			
+			$csrf = bin2hex(openssl_random_pseudo_bytes(32));
+			$this->Session->write('csrf', $csrf);
+			$this->set('billings', $billings);
+			$this->set('shippings', $shippings);
+			$this->set('order_items', $this->Utility->getCart($this->Session));
+			$this->set('csrf', $csrf);
+		
+			$this->layout = 'checkout';
+			$this->render('checkout');
 		}
-		$this->redirect('/');
-		exit();
 	}
 	
 	function thankyou() {
